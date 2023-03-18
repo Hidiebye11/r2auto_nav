@@ -235,9 +235,6 @@ class Mover(Node):
                         twist.angular.z -= rotatechange
                     elif cmd_char == 'o': # to save the map values
                         #save the coordinate
-                        ##rclpy.spin_once(self)
-                        ##angle = math.degrees(self.yaw_map)
-                        ##self.get_logger().info('x coordinate: %f y coordinate: %f current yaw: %f' %(self.x_coordinate, self.y_coodinate, angle))
                         self.storeWaypoint()
                         
                     # start the movement
