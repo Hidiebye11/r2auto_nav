@@ -1,19 +1,3 @@
-# Copyright 2016 Open Source Robotics Foundation, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# adapted from https://github.com/Shashika007/teleop_twist_keyboard_ros2/blob/foxy/teleop_twist_keyboard_trio/teleop_keyboard.py
-
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
@@ -53,20 +37,10 @@ def euler_from_quaternion(x, y, z, w):
     return roll_x, pitch_y, yaw_z # in radians
 
 
-# function to check if keyboard input is a number as
-# isnumeric does not handle negative numbers
-def isnumber(value):
-    try:
-        int(value)
-        return True
-    except ValueError:
-        return False
-
-
-# class for moving and rotating robot
-class Mover(Node):
+# class for moving the robot based on coordinates
+class Navigate(Node):
     def __init__(self):
-        super().__init__('wayPoints')
+        super().__init__('moveToCoordinate')
         self.publisher_ = self.create_publisher(Twist,'cmd_vel',10)
         # self.get_logger().info('Created publisher')
 
@@ -113,7 +87,6 @@ class Mover(Node):
         position_map = msg.position
         self.x_coordinate = position_map.x
         self.y_coodinate = position_map.y
-
 
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
@@ -168,99 +141,17 @@ class Mover(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-    # function to store the waypoints into a json file
-    def storeWaypoint(self):
-
-        rclpy.spin_once(self)
-        angle = math.degrees(self.yaw_map)
-        self.get_logger().info('x coordinate: %f y coordinate: %f current yaw: %f' %(self.x_coordinate, self.y_coodinate, angle))
-        data = dict()
-
-        try:
-            while True:
-                # get keyboard input
-                point_number = str(input("Enter Point number to which you want to save the data into (Press 'c' to cancel)"))
-
-                if point_number == 'c':
-                    # cancel save operation
-                    break
-                else:
-                    with open('/home/vaibhav/colcon_ws/src/auto_nav/auto_nav/wayPointsData.json') as f:
-                        data = json.load(f)
-                    data['point' + point_number]['x_cord'] = self.x_coordinate
-                    data['point' + point_number]['y_cord'] = self.y_coodinate
-                    data['point' + point_number]['orientation'] = angle
-
-                    with open('/home/vaibhav/colcon_ws/src/auto_nav/auto_nav/wayPointsData.json', 'w') as f:
-                        json.dump(data, f, indent=2)
-                    
-                    break
-        except Exception as e:
-            print(e)
-
-    # function to read keyboard input
-    def readKey(self):
-        twist = Twist()
-        try:
-            while True:
-                # get keyboard input
-                cmd_char = str(input("Keys w/x/a/d -/+int s: "))
-        
-                # use our own function isnumber as isnumeric 
-                # does not handle negative numbers
-                if isnumber(cmd_char):
-                    # rotate by specified angle
-                    self.rotatebot(int(cmd_char))
-                else:
-                    # check which key was entered
-                    if cmd_char == 's':
-                        # stop moving
-                        twist.linear.x = 0.0
-                        twist.angular.z = 0.0
-                    elif cmd_char == 'w':
-                        # move forward
-                        twist.linear.x += speedchange
-                        twist.angular.z = 0.0
-                    elif cmd_char == 'x':
-                        # move backward
-                        twist.linear.x -= speedchange
-                        twist.angular.z = 0.0
-                    elif cmd_char == 'a':
-                        # turn counter-clockwise
-                        twist.linear.x = 0.0
-                        twist.angular.z += rotatechange
-                    elif cmd_char == 'd':
-                        # turn clockwise
-                        twist.linear.x = 0.0
-                        twist.angular.z -= rotatechange
-                    elif cmd_char == 'o': # to save the map values
-                        #save the coordinate
-                        self.storeWaypoint()
-                        
-                    # start the movement
-                    self.publisher_.publish(twist)
-    
-        except Exception as e:
-            print(e)
-            
-		# Ctrl-c detected
-        finally:
-        	# stop moving
-            twist.linear.x = 0.0
-            twist.angular.z = 0.0
-            self.publisher_.publish(twist)
-
 
 def main(args=None):
     rclpy.init(args=args)
 
-    mover = Mover()    
-    mover.readKey()
+    navigation = Navigate()    
+    
     
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    mover.destroy_node()
+    navigation.destroy_node()
     
     rclpy.shutdown()
 
