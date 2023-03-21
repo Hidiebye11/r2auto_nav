@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Point
 from geometry_msgs.msg import Pose #I added this to subscribe to map2base
 import math
 import cmath
@@ -11,7 +11,6 @@ import json ## I added this to save the coordinates into a file
 # constants
 rotatechange = 0.1
 speedchange = 0.05
-
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -141,6 +140,33 @@ class Navigate(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
+    #function to navigate to coordinate
+    def moveToGoal(self):
+        goal = Point()
+        goal.x = 0
+        goal.y = 0
+        reached = False
+
+        speed = Twist()
+
+        inc_x = goal.x - self.x_coordinate
+        inc_y = goal.y - self.y_coodinate
+
+        angle_to_goal = math.degrees(math.atan2(inc_x, inc_y))
+            
+        if abs(angle_to_goal - math.degrees(self.yaw_map)) > 5:
+                self.rotatebot(angle_to_goal)
+
+        while (reached == False):
+            rclpy.spin_once(self)
+
+            if ((abs(goal.x - self.x_coordinate) > 0.5) or (abs(goal.y - self.y_coordinate) > 0.5)):        
+                speed.linear.x = 0.5
+                speed.angular.z = 0.0
+            else:
+                reached = True         
+
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -152,6 +178,7 @@ def main(args=None):
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
     navigation.destroy_node()
+    navigation.moveToGoal()
     
     rclpy.shutdown()
 
