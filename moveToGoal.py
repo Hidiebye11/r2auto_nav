@@ -1,6 +1,5 @@
 import rclpy
 from rclpy.node import Node
-from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, Point
 from geometry_msgs.msg import Pose #I added this to subscribe to map2base
 import math
@@ -39,22 +38,9 @@ def euler_from_quaternion(x, y, z, w):
 # class for moving the robot based on coordinates
 class Navigate(Node):
     def __init__(self):
-        super().__init__('moveToCoordinate')
+        super().__init__('moveToGoal')
         self.publisher_ = self.create_publisher(Twist,'cmd_vel',10)
         # self.get_logger().info('Created publisher')
-
-        ## create subscription to track orientation
-        self.subscription = self.create_subscription(
-            Odometry,
-            'odom',
-            self.odom_callback,
-            10)
-        # self.get_logger().info('Created subscriber')
-        self.subscription  # prevent unused variable warning
-        # initialize variables
-        self.roll = 0
-        self.pitch = 0
-        self.yaw = 0
 
         ## create subscription to get location values from map2base
         self.map2base_subscription = self.create_subscription(
@@ -65,24 +51,16 @@ class Navigate(Node):
         self.map2base_subscription # prevent unused variable warning
         self.x_coordinate = 0 # x-coordinate of the bot in the map
         self.y_coodinate = 0 # y-coordinate of the bot in the map
-        self.roll_map = 0 # roll of the bot in the map (not needed)
-        self.pitch_map = 0 # pitch of the bot in the map (not needed)
-        self.yaw_map = 0 # yaw of the bot in the map (needed)
-
-
-    # function to set the class variables using the odometry information
-    def odom_callback(self, msg):
-        # self.get_logger().info(msg)
-        # self.get_logger().info('In odom_callback')
-        orientation_quat =  msg.pose.pose.orientation
-        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
+        self.roll = 0 # roll of the bot in the map (not needed)
+        self.pitch = 0 # pitch of the bot in the map (not needed)
+        self.yaw = 0 # yaw of the bot in the map (needed)
 
     # function to set the class variables using the map2base information
     def map2base_callback(self, msg):
         # self.get_logger().info(msg)
         # self.get_logger().info('In map2base_callback')
         orientation_quat_map = msg.orientation
-        self.roll_map, self.pitch_map, self.yaw_map = euler_from_quaternion(orientation_quat_map.x, orientation_quat_map.y, orientation_quat_map.z, orientation_quat_map.w)
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat_map.x, orientation_quat_map.y, orientation_quat_map.z, orientation_quat_map.w)
         position_map = msg.position
         self.x_coordinate = position_map.x
         self.y_coodinate = position_map.y
@@ -143,28 +121,37 @@ class Navigate(Node):
     #function to navigate to coordinate
     def moveToGoal(self):
         goal = Point()
-        goal.x = 0
-        goal.y = 0
+        goal.x = 0.0
+        goal.y = 0.0
         reached = False
 
         speed = Twist()
 
+        rclpy.spin_once(self)
         inc_x = goal.x - self.x_coordinate
         inc_y = goal.y - self.y_coodinate
+        
+        self.get_logger().info('inc_x: %f inc_y: %f' %(inc_x, inc_y))
 
         angle_to_goal = math.degrees(math.atan2(inc_x, inc_y))
             
-        if abs(angle_to_goal - math.degrees(self.yaw_map)) > 5:
-                self.rotatebot(angle_to_goal)
+        if abs(angle_to_goal - math.degrees(self.yaw)) > 5:
+                #self.get_logger().info('in angle thing')
+                self.get_logger().info('angleToGoal: %f' % (angle_to_goal))
+                #self.rotatebot(angle_to_goal)
 
         while (reached == False):
             rclpy.spin_once(self)
 
-            if ((abs(goal.x - self.x_coordinate) > 0.5) or (abs(goal.y - self.y_coordinate) > 0.5)):        
+            if ((abs(goal.x - self.x_coordinate) > 0.05) or (abs(goal.y - self.y_coodinate) > 0.05)):        
                 speed.linear.x = 0.5
                 speed.angular.z = 0.0
             else:
-                reached = True         
+                speed.linear.x = 0.0
+                speed.angular.z = 0.0
+                reached = True       
+            self.publisher_.publish(speed)
+
 
 
 
@@ -172,13 +159,12 @@ def main(args=None):
     rclpy.init(args=args)
 
     navigation = Navigate()    
-    
+    navigation.moveToGoal()
     
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
     navigation.destroy_node()
-    navigation.moveToGoal()
     
     rclpy.shutdown()
 

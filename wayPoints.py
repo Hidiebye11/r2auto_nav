@@ -16,7 +16,6 @@
 
 import rclpy
 from rclpy.node import Node
-from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Pose #I added this to subscribe to map2base
 import math
@@ -70,19 +69,6 @@ class Mover(Node):
         self.publisher_ = self.create_publisher(Twist,'cmd_vel',10)
         # self.get_logger().info('Created publisher')
 
-        ## create subscription to track orientation
-        self.subscription = self.create_subscription(
-            Odometry,
-            'odom',
-            self.odom_callback,
-            10)
-        # self.get_logger().info('Created subscriber')
-        self.subscription  # prevent unused variable warning
-        # initialize variables
-        self.roll = 0
-        self.pitch = 0
-        self.yaw = 0
-
         ## create subscription to get location values from map2base
         self.map2base_subscription = self.create_subscription(
             Pose,
@@ -92,24 +78,16 @@ class Mover(Node):
         self.map2base_subscription # prevent unused variable warning
         self.x_coordinate = 0 # x-coordinate of the bot in the map
         self.y_coodinate = 0 # y-coordinate of the bot in the map
-        self.roll_map = 0 # roll of the bot in the map (not needed)
-        self.pitch_map = 0 # pitch of the bot in the map (not needed)
-        self.yaw_map = 0 # yaw of the bot in the map (needed)
-
-
-    # function to set the class variables using the odometry information
-    def odom_callback(self, msg):
-        # self.get_logger().info(msg)
-        # self.get_logger().info('In odom_callback')
-        orientation_quat =  msg.pose.pose.orientation
-        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
+        self.roll= 0 # roll of the bot in the map (not needed)
+        self.pitch= 0 # pitch of the bot in the map (not needed)
+        self.yaw = 0 # yaw of the bot in the map (needed)
 
     # function to set the class variables using the map2base information
     def map2base_callback(self, msg):
         # self.get_logger().info(msg)
         # self.get_logger().info('In map2base_callback')
         orientation_quat_map = msg.orientation
-        self.roll_map, self.pitch_map, self.yaw_map = euler_from_quaternion(orientation_quat_map.x, orientation_quat_map.y, orientation_quat_map.z, orientation_quat_map.w)
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat_map.x, orientation_quat_map.y, orientation_quat_map.z, orientation_quat_map.w)
         position_map = msg.position
         self.x_coordinate = position_map.x
         self.y_coodinate = position_map.y
@@ -172,7 +150,7 @@ class Mover(Node):
     def storeWaypoint(self):
 
         rclpy.spin_once(self)
-        angle = math.degrees(self.yaw_map)
+        angle = math.degrees(self.yaw)
         self.get_logger().info('x coordinate: %f y coordinate: %f current yaw: %f' %(self.x_coordinate, self.y_coodinate, angle))
         data = dict()
 
