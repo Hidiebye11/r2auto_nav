@@ -121,7 +121,7 @@ class Navigate(Node):
     #function to navigate to coordinate
     def moveToGoal(self):
         goal = Point()
-        goal.x = 0.0
+        goal.x = 2.0
         goal.y = 0.0
         reached = False
 
@@ -133,13 +133,14 @@ class Navigate(Node):
         
         self.get_logger().info('inc_x: %f inc_y: %f' %(inc_x, inc_y))
 
-        angle_to_goal = math.degrees(math.atan2(inc_x, inc_y))
+        angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
+        self.get_logger().info(('angle is: %f' %(angle_to_goal)))
             
         if abs(angle_to_goal - math.degrees(self.yaw)) > 5:
                 #self.get_logger().info('in angle thing')
-                self.get_logger().info('angleToGoal: %f' % (angle_to_goal))
-                #self.rotatebot(angle_to_goal)
-
+                self.get_logger().info('angleToGoal: %f' % (angle_to_goal - math.degrees(self.yaw)))
+                self.rotatebot(angle_to_goal - math.degrees(self.yaw))
+        self.get_logger().info('moving straight to coordinate')
         while (reached == False):
             rclpy.spin_once(self)
 
