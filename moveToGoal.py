@@ -5,11 +5,19 @@ from geometry_msgs.msg import Pose #I added this to subscribe to map2base
 import math
 import cmath
 import numpy as np
-import json ## I added this to save the coordinates into a file
+import json ## I added this to retrieve the coordinates from a file
 
 # constants
 rotatechange = 0.1
 speedchange = 0.05
+
+# defining the individual tables 'points' based on the wayPointsData.json file
+table1 = [1,2] 
+table2 = [1,3]
+table3 = [1,4]
+table4 = [1,5]
+table5 = [1,6,7]
+table6 = [1,8,9]
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -118,11 +126,11 @@ class Navigate(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-    #function to navigate to coordinate
-    def moveToGoal(self):
+    # function to move to goal
+    def moveToGoal(self, next_x, next_y):
         goal = Point()
-        goal.x = 2.0
-        goal.y = 0.0
+        goal.x = next_x
+        goal.y = next_y
         reached = False
 
         speed = Twist()
@@ -134,13 +142,13 @@ class Navigate(Node):
         self.get_logger().info('inc_x: %f inc_y: %f' %(inc_x, inc_y))
 
         angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
-        self.get_logger().info(('angle is: %f' %(angle_to_goal)))
+        #self.get_logger().info(('angle is: %f' %(angle_to_goal)))
             
         if abs(angle_to_goal - math.degrees(self.yaw)) > 5:
                 #self.get_logger().info('in angle thing')
                 self.get_logger().info('angleToGoal: %f' % (angle_to_goal - math.degrees(self.yaw)))
                 self.rotatebot(angle_to_goal - math.degrees(self.yaw))
-        self.get_logger().info('moving straight to coordinate')
+        self.get_logger().info('moving straight to goal')
         while (reached == False):
             rclpy.spin_once(self)
 
@@ -152,15 +160,45 @@ class Navigate(Node):
                 speed.angular.z = 0.0
                 reached = True       
             self.publisher_.publish(speed)
+        #self.get_logger().info('reached goal')
 
+    # function to use waypoints to navigate to individual Tables
+    def moveToTable(self, table_num):
+        # loads the coordinate data from the wayPointsData.json file into the variable data, as a dictionary
+        with open('/home/vaibhav/colcon_ws/src/auto_nav/auto_nav/wayPointsData.json') as f:
+            data = json.load(f) 
 
+        # returns the array of the table mentioned by table_num
+        current_table = globals()[f"table{table_num}"]
+        #current_table = table1
+
+        for point_number in current_table:
+            x_cord = data['point' + str(point_number)]['x_cord']
+            y_cord = data['point' + str(point_number)]['y_cord']
+            #orientation = data['point' + point_number]['orientation']  Not using as of now
+
+            self.moveToGoal(x_cord,y_cord)
+            self.get_logger().info('Reached point %d' %(point_number))
+        
+        self.get_logger().info('Reached table %d' %(table_num))
+
+    # temporary function to type in the table number
+    def readKey(self):
+        try:
+            while True:
+                # get keyboard input
+                cmd_char = int(input("Please enter the table number: "))
+                
+                self.moveToTable(cmd_char)
+        except Exception as e:
+            print(e)
 
 
 def main(args=None):
     rclpy.init(args=args)
 
     navigation = Navigate()    
-    navigation.moveToGoal()
+    navigation.readKey()
     
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
