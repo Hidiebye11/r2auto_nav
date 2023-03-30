@@ -6,6 +6,8 @@ import math
 import cmath
 import numpy as np
 import json ## I added this to retrieve the coordinates from a file
+import paho.mqtt.client as mqtt
+import socket
 
 # constants
 rotatechange = 0.5
@@ -15,12 +17,14 @@ x_error = 0.05
 y_error = 0.05 
 
 # defining the individual tables 'points' based on the wayPointsData.json file
-table1 = [1,2] 
+table1 = [1,2,3,4] 
 table2 = [1,3]
 table3 = [1,4]
 table4 = [1,5]
 table5 = [1,6,7]
 table6 = [1,8,9]
+
+table_num = -1 # table number Note set to -1 so that it acts as a flag
 
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -144,8 +148,6 @@ class Navigate(Node):
         goal.x = next_x
         # the y-coordinate we need to go to
         goal.y = next_y
-        # define reached variable to end the while loop when the robot reaches a point
-        reached = False
 
         # allow the callback functions to run
         rclpy.spin_once(self)
@@ -167,27 +169,21 @@ class Navigate(Node):
         # prints that the robot is facing the goal
         self.get_logger().info('Facing goal. Now going straight.')
 
+        # twist msg to do straight
+        twist.linear.x += speedchange
+        twist.angular.z = 0.0
         # the while loop continues until the robot reaches the goal
-        while (reached == False):
+        # the if statement checks if the difference between the goal's, x or y, coordinate and the current, x or y, coordinate is > x_error or > y_error respecitively
+        while((abs(goal.x - self.x_coordinate) > x_error) or (abs(goal.y - self.y_coodinate) > y_error)):
             # allow the callback functions to run
             rclpy.spin_once(self)
-            # the if statement checks if the difference between the goal's, x or y, coordinate and the current, x or y, coordinate is > x_error or > y_error respecitively
-            if ((abs(goal.x - self.x_coordinate) > x_error) or (abs(goal.y - self.y_coodinate) > y_error)):
-                # move forward
-                twist.linear.x += speedchange
-                twist.angular.z = 0.0
-            
-            else:
-                # stop moving
-                twist.linear.x = 0.0
-                twist.angular.z = 0.0
-                # changed the reached variable to True in order to exit the loop
-                reached = True
-
-            # publish the movement commands
             self.publisher_.publish(twist)
-
-        # self.get_logger().info('reached goal')
+        
+        # stop moving
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
+        # publish the movement commands
+        self.publisher_.publish(twist)
 
 
     # function to use waypoints to navigate to individual Tables
@@ -214,42 +210,39 @@ class Navigate(Node):
         #prints to the terminal that the table has been reached
         self.get_logger().info('Reached table %d' %(table_num))
 
-
-    # temporary function to type in the table number
-    def readKey(self):
-        try:
-            while True:
-                # get keyboard input
-                cmd_char = int(input("Please enter the table number: "))
-                
-                # move to table number cmd_char
-                self.moveToTable(cmd_char)
-
-        except Exception as e:
-            print(e)
-        
-        # Ctrl-c detected
-        finally:
-            twist = Twist()
-        	# stop moving
-            twist.linear.x = 0.0
-            twist.angular.z = 0.0
-            self.publisher_.publish(twist)
+# function to store the msg sent by the esp32 into the global variable table_num
+def on_table_num(client, userdata, msg):
+    global table_num 
+    table_num = int(msg.payload.decode('utf-8'))
+    #print(table_num)
 
 
 def main(args=None):
-    rclpy.init(args=args)
+     global table_num
+     rclpy.init(args=args)
+     # to get ip address of the laptop
+     my_ip = socket.gethostbyname(socket.gethostname())
 
-    navigation = Navigate()    
-    navigation.readKey()
-    
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    navigation.destroy_node()
-    
-    rclpy.shutdown()
+     # to connect to the mqtt broker
+     client = mqtt.Client("Turtlebot")
+     client.message_callback_add('esp32/output', on_table_num)
+     client.connect(my_ip, 1883)
+     client.loop_start()
+     client.subscribe("esp32/output")
 
+     # to start the navigation based on the table number esp32 sends. The code runs forever.
+     navigation = Navigate()
+     while True:
+         print (table_num)
+         if(table_num != -1):
+             navigation.moveToTable(table_num)
+             table_num = -1
+         pass
+     
+     navigation.destroy_node()
+     rclpy.shutdown()
+    
+        
 
 if __name__ == '__main__':
     main()

@@ -1,23 +1,23 @@
 {
   "point1": {
-    "x_cord": -0.5043357983370202,
-    "y_cord": -0.0037590049593785382,
-    "orientation": 0.46017611826962435
+    "x_cord": 0.037915382150162553,
+    "y_cord": 0.005117767146174519,
+    "orientation": -0.01566299916344183
   },
   "point2": {
-    "x_cord": 0.3776190064999483,
-    "y_cord": -0.017234269076835257,
-    "orientation": 0.31590739249481165
+    "x_cord": 1.0162393332920978,
+    "y_cord": -0.014952915146300101,
+    "orientation": 2.1914997917288543
   },
   "point3": {
-    "x_cord": null,
-    "y_cord": null,
-    "orientation": null
+    "x_cord": 1.0311100328260971,
+    "y_cord": 0.8047434898337387,
+    "orientation": 93.45336399440673
   },
   "point4": {
-    "x_cord": null,
-    "y_cord": null,
-    "orientation": null
+    "x_cord": 0.14958461140530302,
+    "y_cord": 0.7490440206630493,
+    "orientation": -175.0961477814045
   },
   "point5": {
     "x_cord": null,
