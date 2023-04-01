@@ -1,24 +1,25 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Point
-from geometry_msgs.msg import Pose #I added this to subscribe to map2base
+from geometry_msgs.msg import Pose # I added this to subscribe to map2base
 import math
 import cmath
 import numpy as np
-import json ## I added this to retrieve the coordinates from a file
+import json # I added this to retrieve the coordinates from a file
 import paho.mqtt.client as mqtt
 import socket
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String, Bool # I added this to subscribe to ir_state and switch_state
+import time
 
 # constants
-rotatechange = 0.5
+rotatechange = 0.1
 speedchange = 0.05
 angle_error = 5 # in degrees
 x_error = 0.05 
 y_error = 0.05 
 
 # defining the individual tables 'points' based on the wayPointsData.json file
-table1 = [1,2,3,4] 
+table1 = [1,2] 
 table2 = [1,3]
 table3 = [1,4]
 table4 = [1,5]
@@ -52,13 +53,14 @@ def euler_from_quaternion(x, y, z, w):
     return roll_x, pitch_y, yaw_z # in radians
 
 
+
 # class for moving the robot based on coordinates
 class Navigate(Node):
     def __init__(self):
         super().__init__('moveToGoal')
         self.publisher_ = self.create_publisher(Twist,'cmd_vel',10)
 
-        # create subscription to get location values from map2base
+        # create subscription to get location values from /map2base
         self.map2base_subscription = self.create_subscription(
             Pose,
             '/map2base',
@@ -70,9 +72,9 @@ class Navigate(Node):
         self.y_coodinate = 0 # y-coordinate of the bot in the map
         self.roll = 0 # roll of the bot in the map (not needed)
         self.pitch = 0 # pitch of the bot in the map (not needed)
-        self.yaw = 0 # yaw of the bot in the map (needed)
+        self.yaw = 0 # yaw of the bot in the map
 
-        # create subscription to get IR sensor data from ir_state
+        # create subscription to get IR sensor data from /ir_state
         self.ir_state_subscription = self.create_subscription(
             String,
             'ir_state',
@@ -80,9 +82,9 @@ class Navigate(Node):
             10)
         self.ir_state_subscription # prevent unused variable warning
         # initialize variables
-        self.ir_state = '' # IR sensor data from the bo. f = forward,r = right, l = left, s = stop
+        self.ir_state = '' # IR sensor data from the bot: f = forward,r = right, l = left, s = stop
 
-        # create subscription to get switch sensor data from switch_state
+        # create subscription to get switch sensor data from /switch_state
         self.switch_state_subscription = self.create_subscription(
             Bool,
             'switch_state',
@@ -90,10 +92,15 @@ class Navigate(Node):
             10)
         self.switch_state_subscription # prevent unused variable warning
         # initialize variables
-        self.switch_state = False # switch sensor data from the bot published through the topic /switch_state
+        self.switch_state = False # switch state: True = pressed, False = not pressed
+
+        # variable to store if line is found
+        self.foundLine = False
+        # variable to count the number of times 's' is received from the IR sensor while docking
+        self.count_stop = 0
 
 
-    # function to set the class variables using the map2base information
+    # function to set the class variables using the /map2base information
     def map2base_callback(self, msg):
         # self.get_logger().info(msg)
         # self.get_logger().info('In map2base_callback')
@@ -103,18 +110,19 @@ class Navigate(Node):
         self.x_coordinate = position_map.x
         self.y_coodinate = position_map.y
 
-    # function to set class variables using the ir_state information
+
+    # function to set class variables using the /ir_state information
     def ir_state_callback(self, msg):
         # self.get_logger().info(msg)
         # self.get_logger().info('In ir_state_callback')
         self.ir_state = msg.data
-    
-    # function to set class variables using the switch_state information
+
+
+    # function to set class variables using the /switch_state information
     def switch_state_callback(self, msg):
         # self.get_logger().info(msg)
         # self.get_logger().info('In switch_state_callback')
         self.switch_state = msg.data
-
 
 
     # function to rotate the TurtleBot
@@ -220,6 +228,84 @@ class Navigate(Node):
         self.publisher_.publish(twist)
 
 
+    # function to dock the robot
+    def dock(self):
+        # create Twist object
+        twist = Twist()
+        # set twist such that it rotates in point
+        twist.linear.x = 0.0
+        twist.angular.z += rotatechange
+        # keeps rotating until line is found
+        while(self.foundLine == False):
+              rclpy.spin_once(self)
+              if(self.ir_state == 'r'):
+                    self.get_logger().info('Found line')
+                    self.foundLine = True
+                    twist.angular.z -= rotatechange
+                    self.publisher_.publish(twist)
+                    time.sleep(1)
+                    twist.angular.z = 0.0
+                    self.publisher_.publish(twist)
+                    break
+              else:
+                    self.publisher_.publish(twist)
+        
+        # now that we have the line in between the ir sensors, we will now start the docking
+        self.get_logger().info('Docking...')
+        # How the code works is that the robot will keep following the line until it reaches the end of the line.
+        # It will only stop completely if the ir_state becomes 's' twice.
+        # Hence, the loop will only stop if count_stop becomes 2
+        while(self.count_stop != 2):
+            rclpy.spin_once(self)
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            # if the right ir sensor detects a line, then the robot will turn right
+            if(self.ir_state == 'r'):
+                twist.linear.x = 0.0
+                twist.angular.z -= rotatechange
+                self.publisher_.publish(twist)
+            # if the left ir sensor detects a line, then the robot will turn left
+            elif(self.ir_state == 'l'):
+                twist.linear.x = 0.0
+                twist.angular.z += rotatechange
+                self.publisher_.publish(twist)
+            # if both ir sensors dont detect a line, then the robot will move forward
+            elif(self.ir_state == 'f'):
+                twist.linear.x += -(speedchange - 0.03)
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+            # if both ir sensors detect a line and the count_stop = 0, then the robot will stop
+            elif(self.ir_state == 's' and self.count_stop == 0):
+                self.count_stop += 1
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+            # if count_stop = 1 then the robot will wait for 2 seconds and check if the ir_state is still 's'
+            # if it is, then the robot will stop completely
+            # if it is not, then the robot will restart the docking process
+            # this is to prevent the robot from stopping when it approaches the line at 90 degrees
+            elif(self.count_stop == 1):
+                twist.linear.x += -(speedchange - 0.03)
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+                self.get_logger().info('waiting for 2 seconds')
+                time.sleep(1) # sleep in seconds
+                rclpy.spin_once(self)
+                if(self.ir_state == 'f'):
+                    self.count_stop = 0
+                    twist.linear.x = 0.0
+                    twist.angular.z = 0.0
+                    self.publisher_.publish(twist)
+                    self.get_logger().info('Robot was at 90 degrees at line. Therefore restarted docking.')
+                elif(self.ir_state == 's'):
+                    self.count_stop += 1
+
+        # stop moving
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
+        self.publisher_.publish(twist)
+
+
     # function to use waypoints to navigate to individual Tables
     def moveToTable(self, table_num):
         # loads the coordinate data from the wayPointsData.json file into the variable data, as a dictionary
@@ -244,16 +330,33 @@ class Navigate(Node):
         #prints to the terminal that the table has been reached
         self.get_logger().info('Reached table %d' %(table_num))
 
-    
-    # to test ir_data
-    def test_ir(self):
-        rclpy.spin_once(self)
-        self.get_logger().info('IR Data: %s' % self.ir_state)
-    
-    def test_switch(self):
-        rclpy.spin_once(self)
-        self.get_logger().info('Switch Data: %s' % self.switch_state)
-        
+        # wait for the can to be picked (switch_state to become false)
+        while(self.switch_state):
+            rclpy.spin_once(self)
+        # prints to the terminal that the can has been picked
+        self.get_logger().info('Can picked')
+
+        # goes through each point in the array of current_table in reverse order
+        for point_number in reversed(current_table):
+            # extracts the x-coordinate of the point in the current_table's array
+            x_cord = data['point' + str(point_number)]['x_cord']
+            # extracts the y-coordinate of the point in the current_table's array
+            y_cord = data['point' + str(point_number)]['y_cord']
+            # extracts the orientation of the robot at the point in the currect_table's array
+            #orientation = data['point' + point_number]['orientation']  Not using as of now
+
+            # calls the function to move the robot to the point
+            self.moveToGoal(x_cord,y_cord)
+            # prints to the terminal that the point has been reached
+            self.get_logger().info('Reached point %d' %(point_number))
+        # prints to the terminal that robot has reached the docking point
+        self.get_logger().info('Reached docking point')
+
+        # initiates docking
+        self.dock()
+        # once docked, prints to the terminal that the robot has docked
+        self.get_logger().info('Docked!')
+
 
 
 # function to store the msg sent by the esp32 into the global variable table_num
@@ -280,10 +383,16 @@ def main(args=None):
      # to start the navigation based on the table number esp32 sends. The code runs forever.
      navigation = Navigate()
      while True:
-         #print (table_num)
+         print (table_num)
          if(table_num != -1):
-             navigation.moveToTable(table_num)
+             # send message to esp32 to tell it that the robot has un-docked and is moving to the table
+             client.publish("esp32/input", "0")
+             #navigation.moveToTable(table_num)
+             navigation.dock()
              table_num = -1
+             # send message back to esp32 to tell it that the robot has docked
+             client.publish("esp32/input", "1")
+         
          pass
      
      navigation.destroy_node()
