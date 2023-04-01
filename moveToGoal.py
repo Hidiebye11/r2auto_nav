@@ -289,7 +289,7 @@ class Navigate(Node):
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
                 self.get_logger().info('waiting for 2 seconds')
-                time.sleep(1) # sleep in seconds
+                time.sleep(2) # sleep in seconds
                 rclpy.spin_once(self)
                 if(self.ir_state == 'f'):
                     self.count_stop = 0
@@ -383,7 +383,7 @@ def main(args=None):
      # to start the navigation based on the table number esp32 sends. The code runs forever.
      navigation = Navigate()
      while True:
-         print (table_num)
+         #print (table_num)
          if(table_num != -1):
              # send message to esp32 to tell it that the robot has un-docked and is moving to the table
              client.publish("esp32/input", "0")
