@@ -8,6 +8,7 @@ import numpy as np
 import json ## I added this to retrieve the coordinates from a file
 import paho.mqtt.client as mqtt
 import socket
+from std_msgs.msg import String, Bool
 
 # constants
 rotatechange = 0.5
@@ -71,6 +72,26 @@ class Navigate(Node):
         self.pitch = 0 # pitch of the bot in the map (not needed)
         self.yaw = 0 # yaw of the bot in the map (needed)
 
+        # create subscription to get IR sensor data from ir_state
+        self.ir_state_subscription = self.create_subscription(
+            String,
+            'ir_state',
+            self.ir_state_callback,
+            10)
+        self.ir_state_subscription # prevent unused variable warning
+        # initialize variables
+        self.ir_state = '' # IR sensor data from the bo. f = forward,r = right, l = left, s = stop
+
+        # create subscription to get switch sensor data from switch_state
+        self.switch_state_subscription = self.create_subscription(
+            Bool,
+            'switch_state',
+            self.switch_state_callback,
+            10)
+        self.switch_state_subscription # prevent unused variable warning
+        # initialize variables
+        self.switch_state = False # switch sensor data from the bot published through the topic /switch_state
+
 
     # function to set the class variables using the map2base information
     def map2base_callback(self, msg):
@@ -81,6 +102,19 @@ class Navigate(Node):
         position_map = msg.position
         self.x_coordinate = position_map.x
         self.y_coodinate = position_map.y
+
+    # function to set class variables using the ir_state information
+    def ir_state_callback(self, msg):
+        # self.get_logger().info(msg)
+        # self.get_logger().info('In ir_state_callback')
+        self.ir_state = msg.data
+    
+    # function to set class variables using the switch_state information
+    def switch_state_callback(self, msg):
+        # self.get_logger().info(msg)
+        # self.get_logger().info('In switch_state_callback')
+        self.switch_state = msg.data
+
 
 
     # function to rotate the TurtleBot
@@ -210,13 +244,26 @@ class Navigate(Node):
         #prints to the terminal that the table has been reached
         self.get_logger().info('Reached table %d' %(table_num))
 
+    
+    # to test ir_data
+    def test_ir(self):
+        rclpy.spin_once(self)
+        self.get_logger().info('IR Data: %s' % self.ir_state)
+    
+    def test_switch(self):
+        rclpy.spin_once(self)
+        self.get_logger().info('Switch Data: %s' % self.switch_state)
+        
+
+
 # function to store the msg sent by the esp32 into the global variable table_num
 def on_table_num(client, userdata, msg):
     global table_num 
     table_num = int(msg.payload.decode('utf-8'))
-    #print(table_num)
+    print(table_num) # added cuz without this IT WONT WORK
 
 
+# main function
 def main(args=None):
      global table_num
      rclpy.init(args=args)
@@ -233,7 +280,7 @@ def main(args=None):
      # to start the navigation based on the table number esp32 sends. The code runs forever.
      navigation = Navigate()
      while True:
-         print (table_num)
+         #print (table_num)
          if(table_num != -1):
              navigation.moveToTable(table_num)
              table_num = -1
