@@ -26,8 +26,8 @@ from std_msgs.msg import String, Bool # I added this to subscribe to ir_state an
 import time
 
 # constants
-rotatechange = 0.1
-speedchange = 0.05
+ROTATE_CHANGE = 0.1
+SPEED_CHANGE = 0.01
 
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -115,7 +115,6 @@ class Mover(Node):
         # self.get_logger().info('In ir_state_callback')
         self.ir_state = msg.data
 
-
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
         # self.get_logger().info('In rotatebot')
@@ -141,7 +140,7 @@ class Mover(Node):
         # set linear speed to zero so the TurtleBot rotates on the spot
         twist.linear.x = 0.0
         # set the direction to rotate
-        twist.angular.z = c_change_dir * speedchange
+        twist.angular.z = c_change_dir * SPEED_CHANGE
         # start rotation
         self.publisher_.publish(twist)
 
@@ -175,14 +174,14 @@ class Mover(Node):
         twist = Twist()
         # set twist such that it rotates in point
         twist.linear.x = 0.0
-        twist.angular.z += rotatechange
+        twist.angular.z += ROTATE_CHANGE
         # keeps rotating until line is found
         while(self.foundLine == False):
               rclpy.spin_once(self)
               if(self.ir_state == 'r'):
                     self.get_logger().info('Found line')
                     self.foundLine = True
-                    twist.angular.z -= rotatechange
+                    twist.angular.z -= ROTATE_CHANGE
                     self.publisher_.publish(twist)
                     time.sleep(1)
                     twist.angular.z = 0.0
@@ -203,16 +202,16 @@ class Mover(Node):
             # if the right ir sensor detects a line, then the robot will turn right
             if(self.ir_state == 'r'):
                 twist.linear.x = 0.0
-                twist.angular.z -= rotatechange
+                twist.angular.z -= ROTATE_CHANGE
                 self.publisher_.publish(twist)
             # if the left ir sensor detects a line, then the robot will turn left
             elif(self.ir_state == 'l'):
                 twist.linear.x = 0.0
-                twist.angular.z += rotatechange
+                twist.angular.z += ROTATE_CHANGE
                 self.publisher_.publish(twist)
             # if both ir sensors dont detect a line, then the robot will move forward
             elif(self.ir_state == 'f'):
-                twist.linear.x += -(speedchange - 0.03)
+                twist.linear.x += -(SPEED_CHANGE - 0.03)
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
             # if both ir sensors detect a line and the count_stop = 0, then the robot will stop
@@ -226,7 +225,7 @@ class Mover(Node):
             # if it is not, then the robot will restart the docking process
             # this is to prevent the robot from stopping when it approaches the line at 90 degrees
             elif(self.count_stop == 1):
-                twist.linear.x += -(speedchange - 0.03)
+                twist.linear.x += -(SPEED_CHANGE - 0.03)
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
                 self.get_logger().info('waiting for 2 seconds')
@@ -241,6 +240,7 @@ class Mover(Node):
                 elif(self.ir_state == 's'):
                     self.count_stop += 1
         
+        # resets foundLine and count_stop to initial values
         self.foundLine = False
         self.count_stop = 0
         # stop moving
@@ -299,20 +299,20 @@ class Mover(Node):
                         twist.angular.z = 0.0
                     elif cmd_char == 'w':
                         # move forward
-                        twist.linear.x += speedchange
+                        twist.linear.x += SPEED_CHANGE
                         twist.angular.z = 0.0
                     elif cmd_char == 'x':
                         # move backward
-                        twist.linear.x -= speedchange
+                        twist.linear.x -= SPEED_CHANGE
                         twist.angular.z = 0.0
                     elif cmd_char == 'a':
                         # turn counter-clockwise
                         twist.linear.x = 0.0
-                        twist.angular.z += rotatechange
+                        twist.angular.z += ROTATE_CHANGE
                     elif cmd_char == 'd':
                         # turn clockwise
                         twist.linear.x = 0.0
-                        twist.angular.z -= rotatechange
+                        twist.angular.z -= ROTATE_CHANGE
                     elif cmd_char == 'o': # to save the map values
                         #save the coordinate
                         self.storeWaypoint()
