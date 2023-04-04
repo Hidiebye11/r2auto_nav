@@ -22,6 +22,8 @@ import math
 import cmath
 import numpy as np
 import json ## I added this to save the coordinates into a file
+from std_msgs.msg import String, Bool # I added this to subscribe to ir_state and switch_state
+import time
 
 # constants
 rotatechange = 0.1
@@ -82,6 +84,21 @@ class Mover(Node):
         self.pitch= 0 # pitch of the bot in the map (not needed)
         self.yaw = 0 # yaw of the bot in the map (needed)
 
+        # create subscription to get IR sensor data from /ir_state
+        self.ir_state_subscription = self.create_subscription(
+            String,
+            'ir_state',
+            self.ir_state_callback,
+            10)
+        self.ir_state_subscription # prevent unused variable warning
+        # initialize variables
+        self.ir_state = '' # IR sensor data from the bot: f = forward,r = right, l = left, s = stop
+
+        # variable to store if line is found
+        self.foundLine = False
+        # variable to count the number of times 's' is received from the IR sensor while docking
+        self.count_stop = 0
+
     # function to set the class variables using the map2base information
     def map2base_callback(self, msg):
         # self.get_logger().info(msg)
@@ -91,6 +108,12 @@ class Mover(Node):
         position_map = msg.position
         self.x_coordinate = position_map.x
         self.y_coodinate = position_map.y
+    
+    # function to set class variables using the /ir_state information
+    def ir_state_callback(self, msg):
+        # self.get_logger().info(msg)
+        # self.get_logger().info('In ir_state_callback')
+        self.ir_state = msg.data
 
 
     # function to rotate the TurtleBot
@@ -144,6 +167,85 @@ class Mover(Node):
         # set the rotation speed to 0
         twist.angular.z = 0.0
         # stop the rotation
+        self.publisher_.publish(twist)
+    
+    # function to dock the robot
+    def dock(self):
+        # create Twist object
+        twist = Twist()
+        # set twist such that it rotates in point
+        twist.linear.x = 0.0
+        twist.angular.z += rotatechange
+        # keeps rotating until line is found
+        while(self.foundLine == False):
+              rclpy.spin_once(self)
+              if(self.ir_state == 'r'):
+                    self.get_logger().info('Found line')
+                    self.foundLine = True
+                    twist.angular.z -= rotatechange
+                    self.publisher_.publish(twist)
+                    time.sleep(1)
+                    twist.angular.z = 0.0
+                    self.publisher_.publish(twist)
+                    break
+              else:
+                    self.publisher_.publish(twist)
+        
+        # now that we have the line in between the ir sensors, we will now start the docking
+        self.get_logger().info('Docking...')
+        # How the code works is that the robot will keep following the line until it reaches the end of the line.
+        # It will only stop completely if the ir_state becomes 's' twice.
+        # Hence, the loop will only stop if count_stop becomes 2
+        while(self.count_stop != 2):
+            rclpy.spin_once(self)
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            # if the right ir sensor detects a line, then the robot will turn right
+            if(self.ir_state == 'r'):
+                twist.linear.x = 0.0
+                twist.angular.z -= rotatechange
+                self.publisher_.publish(twist)
+            # if the left ir sensor detects a line, then the robot will turn left
+            elif(self.ir_state == 'l'):
+                twist.linear.x = 0.0
+                twist.angular.z += rotatechange
+                self.publisher_.publish(twist)
+            # if both ir sensors dont detect a line, then the robot will move forward
+            elif(self.ir_state == 'f'):
+                twist.linear.x += -(speedchange - 0.03)
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+            # if both ir sensors detect a line and the count_stop = 0, then the robot will stop
+            elif(self.ir_state == 's' and self.count_stop == 0):
+                self.count_stop += 1
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+            # if count_stop = 1 then the robot will wait for 2 seconds and check if the ir_state is still 's'
+            # if it is, then the robot will stop completely
+            # if it is not, then the robot will restart the docking process
+            # this is to prevent the robot from stopping when it approaches the line at 90 degrees
+            elif(self.count_stop == 1):
+                twist.linear.x += -(speedchange - 0.03)
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+                self.get_logger().info('waiting for 2 seconds')
+                time.sleep(2) # sleep in seconds
+                rclpy.spin_once(self)
+                if(self.ir_state == 'f'):
+                    self.count_stop = 0
+                    twist.linear.x = 0.0
+                    twist.angular.z = 0.0
+                    self.publisher_.publish(twist)
+                    self.get_logger().info('Robot was at 90 degrees at line. Therefore restarted docking.')
+                elif(self.ir_state == 's'):
+                    self.count_stop += 1
+        
+        self.foundLine = False
+        self.count_stop = 0
+        # stop moving
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
         self.publisher_.publish(twist)
 
     # function to store the waypoints into a json file
@@ -214,6 +316,9 @@ class Mover(Node):
                     elif cmd_char == 'o': # to save the map values
                         #save the coordinate
                         self.storeWaypoint()
+                    elif cmd_char == 'p': # to dock
+                        #dock the robot
+                        self.dock()
                         
                     # start the movement
                     self.publisher_.publish(twist)

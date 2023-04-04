@@ -14,12 +14,12 @@ import time
 # constants
 rotatechange = 0.1
 speedchange = 0.05
-angle_error = 5 # in degrees
-x_error = 0.05 
-y_error = 0.05 
+angle_error = 1.0 # in degrees
+dist_error = 0.08 # in meters
+ANGLE_CHECK_DISTANCE = 0.5 # in meters
 
 # defining the individual tables 'points' based on the wayPointsData.json file
-table1 = [1,2] 
+table1 = [1,2,3] 
 table2 = [1,3]
 table3 = [1,4]
 table4 = [1,5]
@@ -199,15 +199,33 @@ class Navigate(Node):
         inc_y = goal.y - self.y_coodinate
         # self.get_logger().info('inc_x: %f inc_y: %f' %(inc_x, inc_y))
 
+        # distance_to_goal is the distance between the goal and the current position
+        distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)
+
         # angle_to_coordinate uses the atan2 function to compute the angle from x-axis to the coordinate in the counter-clockwise direction
         angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
         # angle_to_turn stores the angle between the robots 0 degree and the coordinate
         angle_to_turn = angle_to_goal - math.degrees(self.yaw)
         # the if statement checks if the angle to turn is > angle_error   
-        if abs(angle_to_turn) > angle_error:
+
+        twist.linear.x = 0.0
+        #twist.angular.z += rotatechange
+        while abs(angle_to_turn) > angle_error:
+                rclpy.spin_once(self)
+                twist.angular.z = 0.0
+                # angle_to_turn stores the angle between the robots 0 degree and the coordinate
+                angle_to_turn = angle_to_goal - math.degrees(self.yaw)
                 self.get_logger().info('Turning: %f degrees' % (angle_to_turn))
+                if (angle_to_turn > 0):
+                    twist.angular.z += rotatechange
+                else:
+                    twist.angular.z -= rotatechange
                 # calls the rotatebot function to rotate the robot angle_to_turn degrees
-                self.rotatebot(angle_to_turn)
+                #self.rotatebot(angle_to_turn)
+                self.publisher_.publish(twist)
+                
+        twist.angular.z = 0.0
+        self.publisher_.publish(twist)
         # prints that the robot is facing the goal
         self.get_logger().info('Facing goal. Now going straight.')
 
@@ -216,9 +234,48 @@ class Navigate(Node):
         twist.angular.z = 0.0
         # the while loop continues until the robot reaches the goal
         # the if statement checks if the difference between the goal's, x or y, coordinate and the current, x or y, coordinate is > x_error or > y_error respecitively
-        while((abs(goal.x - self.x_coordinate) > x_error) or (abs(goal.y - self.y_coodinate) > y_error)):
+        
+        distance_traveled = 0.0
+        last_angle_check_distance = 0.0
+        distance_left = distance_to_goal
+
+        while(distance_to_goal > dist_error):
             # allow the callback functions to run
             rclpy.spin_once(self)
+            # inc_x is the difference in the x-coordinate between goal and current
+            inc_x = goal.x - self.x_coordinate
+            # inc_y is the difference in y-coordinate between goal and current
+            inc_y = goal.y - self.y_coodinate
+            # distance_to_goal is the distance between the goal and the current position
+            distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)
+            #distance_traveled = distance_to_goal
+            self.get_logger().info('distance: %f' %(distance_to_goal))
+            distance_traveled = distance_left - distance_to_goal
+
+            if distance_traveled - last_angle_check_distance >= ANGLE_CHECK_DISTANCE:
+                twist.linear.x = 0.0
+                twist.angular.z += rotatechange
+                rclpy.spin_once(self)
+                # angle_to_coordinate uses the atan2 function to compute the angle from x-axis to the coordinate in the counter-clockwise direction
+                angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
+                # angle_to_turn stores the angle between the robots 0 degree and the coordinate
+                angle_to_turn = angle_to_goal - math.degrees(self.yaw)
+
+                while abs(angle_to_turn) > angle_error:
+                        rclpy.spin_once(self)
+                        self.get_logger().info('correcting angle')
+                        # angle_to_turn stores the angle between the robots 0 degree and the coordinate
+                        angle_to_turn = angle_to_goal - math.degrees(self.yaw)
+                        self.get_logger().info('Turning: %f degrees' % (angle_to_turn))
+                        # calls the rotatebot function to rotate the robot angle_to_turn degrees
+                        #self.rotatebot(angle_to_turn)
+                        self.publisher_.publish(twist)
+                
+                twist.linear.x += speedchange
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+                last_angle_check_distance = distance_traveled
+
             self.publisher_.publish(twist)
         
         # stop moving
@@ -300,6 +357,8 @@ class Navigate(Node):
                 elif(self.ir_state == 's'):
                     self.count_stop += 1
 
+        self.foundLine = False
+        self.count_stop = 0
         # stop moving
         twist.linear.x = 0.0
         twist.angular.z = 0.0
@@ -331,13 +390,14 @@ class Navigate(Node):
         self.get_logger().info('Reached table %d' %(table_num))
 
         # wait for the can to be picked (switch_state to become false)
-        while(self.switch_state):
+        rclpy.spin_once(self)
+        while(self.switch_state == True):
             rclpy.spin_once(self)
         # prints to the terminal that the can has been picked
         self.get_logger().info('Can picked')
 
         # goes through each point in the array of current_table in reverse order
-        for point_number in reversed(current_table):
+        for point_number in list(reversed(current_table))[1:]:
             # extracts the x-coordinate of the point in the current_table's array
             x_cord = data['point' + str(point_number)]['x_cord']
             # extracts the y-coordinate of the point in the current_table's array
@@ -387,8 +447,8 @@ def main(args=None):
          if(table_num != -1):
              # send message to esp32 to tell it that the robot has un-docked and is moving to the table
              client.publish("esp32/input", "0")
-             #navigation.moveToTable(table_num)
-             navigation.dock()
+             navigation.moveToTable(table_num)
+             #navigation.dock()
              table_num = -1
              # send message back to esp32 to tell it that the robot has docked
              client.publish("esp32/input", "1")
