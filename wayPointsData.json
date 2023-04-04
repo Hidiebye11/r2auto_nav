@@ -1,48 +1,48 @@
 {
   "point1": {
-    "x_cord": 0.5531718228584627,
-    "y_cord": 0.11835353245952704,
-    "orientation": 7.699328909023184
+    "x_cord": 0.5579737571894778,
+    "y_cord": -0.0036135099824386174,
+    "orientation": 10.425249070709821
   },
   "point2": {
-    "x_cord": 0.56879105179793,
-    "y_cord": 1.2049316173880007,
-    "orientation": 95.9808036143492
+    "x_cord": 1.2815466632563375,
+    "y_cord": -0.017808425088248203,
+    "orientation": -158.3122426493661
   },
   "point3": {
-    "x_cord": 1.3999437031802124,
-    "y_cord": 1.178600510691632,
-    "orientation": 1.8725533927443607
+    "x_cord": 1.2786856993201745,
+    "y_cord": -0.7060070835740442,
+    "orientation": 178.81526249583212
   },
   "point4": {
-    "x_cord": 0.14958461140530302,
-    "y_cord": 0.7490440206630493,
-    "orientation": -175.0961477814045
+    "x_cord": 0.2667905302871798,
+    "y_cord": -0.7453883285567402,
+    "orientation": 164.84187283463902
   },
   "point5": {
-    "x_cord": null,
-    "y_cord": null,
-    "orientation": null
+    "x_cord": 0.24401078271900367,
+    "y_cord": -1.6918996521127125,
+    "orientation": 175.680062363761
   },
   "point6": {
-    "x_cord": null,
-    "y_cord": null,
-    "orientation": null
+    "x_cord": 0.04291118945638672,
+    "y_cord": -2.606827360116421,
+    "orientation": 9.842045072991654
   },
   "point7": {
-    "x_cord": null,
-    "y_cord": null,
-    "orientation": null
+    "x_cord": 1.4543980345374834,
+    "y_cord": -2.5242639423650948,
+    "orientation": -164.12165324311604
   },
   "point8": {
-    "x_cord": null,
-    "y_cord": null,
-    "orientation": null
+    "x_cord": 1.7203010946978985,
+    "y_cord": -1.5736416354214544,
+    "orientation": -47.4054103730457
   },
   "point9": {
-    "x_cord": null,
-    "y_cord": null,
-    "orientation": null
+    "x_cord": 3.1095267005832863,
+    "y_cord": -1.4213109724160873,
+    "orientation": 103.2032294156756
   },
   "point10": {
     "x_cord": null,

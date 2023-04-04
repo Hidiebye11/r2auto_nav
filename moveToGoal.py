@@ -12,14 +12,14 @@ from std_msgs.msg import String, Bool # I added this to subscribe to ir_state an
 import time
 
 # constants
-ROTATE_CHANGE = 0.1
-SPEED_CHANGE = 0.05
+ROTATE_CHANGE = 0.3
+SPEED_CHANGE = 0.10
 ANGLE_ERROR = 1.0
 DIST_ERROR = 0.08
 ANGLE_CHECK_DISTANCE = 0.5
 
 # defining the individual tables 'points' based on the wayPointsData.json file
-table1 = [1,2,3] 
+table1 = [1,2] 
 table2 = [1,3]
 table3 = [1,4]
 table4 = [1,5]
@@ -286,16 +286,16 @@ class Navigate(Node):
             # if the right ir sensor detects a line, then the robot will turn right
             if(self.ir_state == 'r'):
                 twist.linear.x = 0.0
-                twist.angular.z -= ROTATE_CHANGE
+                twist.angular.z -= 0.1
                 self.publisher_.publish(twist)
             # if the left ir sensor detects a line, then the robot will turn left
             elif(self.ir_state == 'l'):
                 twist.linear.x = 0.0
-                twist.angular.z += ROTATE_CHANGE
+                twist.angular.z += 0.1
                 self.publisher_.publish(twist)
             # if both ir sensors dont detect a line, then the robot will move forward
             elif(self.ir_state == 'f'):
-                twist.linear.x += -(SPEED_CHANGE - 0.03)
+                twist.linear.x += -0.02
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
             # if both ir sensors detect a line and the count_stop = 0, then the robot will stop
@@ -309,7 +309,7 @@ class Navigate(Node):
             # if it is not, then the robot will restart the docking process
             # this is to prevent the robot from stopping when it approaches the line at 90 degrees
             elif(self.count_stop == 1):
-                twist.linear.x += -(SPEED_CHANGE - 0.03)
+                twist.linear.x += -0.01
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
                 self.get_logger().info('waiting for 2 seconds')
