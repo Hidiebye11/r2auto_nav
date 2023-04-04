@@ -177,6 +177,7 @@ class Mover(Node):
         twist.angular.z += ROTATE_CHANGE
         # keeps rotating until line is found
         while(self.foundLine == False):
+              self.count_stop = 0 # reset count_stop
               rclpy.spin_once(self)
               if(self.ir_state == 'r'):
                     self.get_logger().info('Found line')
@@ -211,7 +212,7 @@ class Mover(Node):
                 self.publisher_.publish(twist)
             # if both ir sensors dont detect a line, then the robot will move forward
             elif(self.ir_state == 'f'):
-                twist.linear.x += -(SPEED_CHANGE - 0.03)
+                twist.linear.x += -(SPEED_CHANGE + 0.01)
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
             # if both ir sensors detect a line and the count_stop = 0, then the robot will stop
@@ -225,7 +226,7 @@ class Mover(Node):
             # if it is not, then the robot will restart the docking process
             # this is to prevent the robot from stopping when it approaches the line at 90 degrees
             elif(self.count_stop == 1):
-                twist.linear.x += -(SPEED_CHANGE - 0.03)
+                twist.linear.x += -(SPEED_CHANGE + 0.01)
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
                 self.get_logger().info('waiting for 2 seconds')
@@ -239,6 +240,7 @@ class Mover(Node):
                     self.get_logger().info('Robot was at 90 degrees at line. Therefore restarted docking.')
                 elif(self.ir_state == 's'):
                     self.count_stop += 1
+                    self.foundLine = False # reset foundLine
         
         # resets foundLine and count_stop to initial values
         self.foundLine = False
@@ -300,18 +302,18 @@ class Mover(Node):
                     elif cmd_char == 'w':
                         # move forward
                         twist.linear.x += SPEED_CHANGE
-                        twist.angular.z = 0.0
+                        #twist.angular.z = 0.0
                     elif cmd_char == 'x':
                         # move backward
                         twist.linear.x -= SPEED_CHANGE
-                        twist.angular.z = 0.0
+                        #twist.angular.z = 0.0
                     elif cmd_char == 'a':
                         # turn counter-clockwise
-                        twist.linear.x = 0.0
+                        #twist.linear.x = 0.0
                         twist.angular.z += ROTATE_CHANGE
                     elif cmd_char == 'd':
                         # turn clockwise
-                        twist.linear.x = 0.0
+                        #twist.linear.x = 0.0
                         twist.angular.z -= ROTATE_CHANGE
                     elif cmd_char == 'o': # to save the map values
                         #save the coordinate
