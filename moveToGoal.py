@@ -363,6 +363,7 @@ class Navigate(Node):
             rclpy.spin_once(self)
         # prints to the terminal that the can has been picked
         self.get_logger().info('Can picked')
+        time.sleep(4) # wait for some time after can is picked
 
         # goes through each point in the array of current_table in reverse order
         for point_number in list(reversed(current_table))[1:]:
