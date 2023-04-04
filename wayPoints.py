@@ -284,7 +284,7 @@ class Mover(Node):
         try:
             while True:
                 # get keyboard input
-                cmd_char = str(input("Keys w/x/a/d -/+int s: "))
+                cmd_char = str(input("Keys w/x/a/d -/+int s | o - save, p - park: "))
         
                 # use our own function isnumber as isnumeric 
                 # does not handle negative numbers
