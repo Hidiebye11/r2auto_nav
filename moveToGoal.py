@@ -12,19 +12,22 @@ from std_msgs.msg import String, Bool # I added this to subscribe to ir_state an
 import time
 
 # constants
-ROTATE_CHANGE = 0.3
-SPEED_CHANGE = 0.10
-ANGLE_ERROR = 1.0
-DIST_ERROR = 0.08
-ANGLE_CHECK_DISTANCE = 0.5
+ROTATE_CHANGE = 0.5
+SPEED_CHANGE = 0.15
+ANGLE_ERROR = 6.0 
+DIST_ERROR = 0.80 
+ANGLE_CHECK_DISTANCE = 0.2
+SPEED_REDUCTION_DISTANCE = 0.15
+REDUCED_SPEED_CHANGE = 0.05
+ROTATION_REDUCTION_ANGLE = 20.0
 
 # defining the individual tables 'points' based on the wayPointsData.json file
 table1 = [1,2] 
-table2 = [1,3]
-table3 = [1,4]
-table4 = [1,5]
-table5 = [1,6,7]
-table6 = [1,8,9]
+table2 = [1,2,3]
+table3 = [1,10,4]
+table4 = [1,10,5]
+table5 = [1,10,6,7]
+table6 = [1,2,8,9,11]
 
 table_num = -1 # table number Note set to -1 so that it acts as a flag
 
@@ -126,9 +129,65 @@ class Navigate(Node):
         # self.get_logger().info('In switch_state_callback')
         self.switch_state = msg.data
 
+    
+    # function to rotate the TurtleBot
+    def rotatebot(self, rot_angle):
+        # self.get_logger().info('In rotatebot')
+        # create Twist object
+        twist = Twist()
+        
+        # get current yaw angle
+        current_yaw = self.yaw
+        # log the info
+        self.get_logger().info('Current: %f' % math.degrees(current_yaw))
+        # we are going to use complex numbers to avoid problems when the angles go from
+        # 360 to 0, or from -180 to 180
+        c_yaw = complex(math.cos(current_yaw),math.sin(current_yaw))
+        # calculate desired yaw
+        target_yaw = current_yaw + math.radians(rot_angle)
+        # convert to complex notation
+        c_target_yaw = complex(math.cos(target_yaw),math.sin(target_yaw))
+        self.get_logger().info('Desired: %f' % math.degrees(cmath.phase(c_target_yaw)))
+        # divide the two complex numbers to get the change in direction
+        c_change = c_target_yaw / c_yaw
+        # get the sign of the imaginary component to figure out which way we have to turn
+        c_change_dir = np.sign(c_change.imag)
+        # set linear speed to zero so the TurtleBot rotates on the spot
+        twist.linear.x = 0.0
+        # set the direction to rotate
+        twist.angular.z = c_change_dir * ROTATE_CHANGE
+        # start rotation
+        self.publisher_.publish(twist)
+
+        # we will use the c_dir_diff variable to see if we can stop rotating
+        c_dir_diff = c_change_dir
+        # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
+        # if the rotation direction was 1.0, then we will want to stop when the c_dir_diff
+        # becomes -1.0, and vice versa
+        while(c_change_dir * c_dir_diff > 0):
+            # allow the callback functions to run
+            rclpy.spin_once(self)
+            current_yaw = self.yaw
+            # convert the current yaw to complex form
+            c_yaw = complex(math.cos(current_yaw),math.sin(current_yaw))
+            ##self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
+            # get difference in angle between current and target
+            c_change = c_target_yaw / c_yaw
+            # get the sign to see if we can stop
+            c_dir_diff = np.sign(c_change.imag)
+            # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
+
+        self.get_logger().info('End Yaw: %f' % math.degrees(current_yaw))
+        # set the rotation speed to 0
+        twist.angular.z = 0.0
+        # stop the rotation
+        self.publisher_.publish(twist)
+    
 
     # function to move to goal
     def moveToGoal(self, next_x, next_y):
+        global ROTATE_CHANGE # access the global variable
+
         # create Point object
         goal = Point()
         # create Twist object
@@ -153,37 +212,23 @@ class Navigate(Node):
         angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
         # angle_to_turn stores the angle between the robots 0 degree and the coordinate
         angle_to_turn = angle_to_goal - math.degrees(self.yaw)
-        
-        # the if statement checks if the absolute of angle_to_turn is > ANGLE_ERROR   
+
         while abs(angle_to_turn) > ANGLE_ERROR:
-                # cleares the twist object to avoid adding values
-                twist.linear.x = 0.0
-                twist.angular.z = 0.0
-                # allow the callback functions to run
-                rclpy.spin_once(self)
+            if abs(angle_to_turn) < ROTATION_REDUCTION_ANGLE:
+                ROTATE_CHANGE = 0.1
+                self.rotatebot(angle_to_turn)
+                ROTATE_CHANGE = 0.5
+            else:
+                ROTATE_CHANGE = 0.5
+                self.rotatebot(angle_to_turn)
 
-                # updates the angle_to_turn
-                angle_to_turn = angle_to_goal - math.degrees(self.yaw)
-                # prints the angle to turn
-                self.get_logger().info('Turning: %f degrees' % (angle_to_turn))
-                
-                #if the angle to turn is > 0, the robot turns left else it turns right
-                if (angle_to_turn > 0):
-                    twist.angular.z += ROTATE_CHANGE
-                elif (angle_to_turn < 0):
-                    twist.angular.z -= ROTATE_CHANGE
-                # publishes the twist object
-                self.publisher_.publish(twist)
-        # stops the robot
-        twist.linear.x = 0.0  
-        twist.angular.z = 0.0
-        self.publisher_.publish(twist)
-        # prints that the robot is facing the goal
-        self.get_logger().info('Facing goal. Now going straight.')
-
-        # twist msg to go straight
-        ##twist.linear.x += SPEED_CHANGE
-        ##twist.angular.z = 0.0
+            rclpy.spin_once(self)
+            inc_x = goal.x - self.x_coordinate
+            inc_y = goal.y - self.y_coodinate
+            distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)  
+            angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
+            angle_to_turn = angle_to_goal - math.degrees(self.yaw)
+        
         # initialize variables
         distance_traveled = 0.0 # distance traveled by the robot
         last_angle_check_distance = 0.0 # distance traveled by the robot when the last angle check was done
@@ -204,45 +249,40 @@ class Navigate(Node):
             # prints the distance to goal
             self.get_logger().info('distance: %f' %(distance_to_goal))
             # updates the distance traveled
-            distance_traveled = distance_left - distance_to_goal
+            distance_traveled = abs(distance_left - distance_to_goal)
             # moves the robot straight
-            twist.linear.x += SPEED_CHANGE
-            twist.angular.z = 0.0
+            if distance_to_goal < SPEED_REDUCTION_DISTANCE:
+                twist.linear.x += REDUCED_SPEED_CHANGE
+                twist.angular.z = 0.0
+            else:
+                twist.linear.x += SPEED_CHANGE
+                twist.angular.z = 0.0
+            # publish the twist msg
             self.publisher_.publish(twist)
 
             # if statement to check if the robot has traveled ANGLE_CHECK_DISTANCE since the last angle check
-            if distance_traveled - last_angle_check_distance >= ANGLE_CHECK_DISTANCE:
+            if abs(distance_traveled - last_angle_check_distance) >= ANGLE_CHECK_DISTANCE:
                 # updates the angle to goal and angle to turn
                 rclpy.spin_once(self)
                 angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
                 angle_to_turn = angle_to_goal - math.degrees(self.yaw)
 
-                # the if statement checks if the absolute of angle_to_turn is > ANGLE_ERROR   
                 while abs(angle_to_turn) > ANGLE_ERROR:
-                        # cleares the twist object to avoid adding values
-                        twist.linear.x = 0.0
-                        twist.angular.z = 0.0
-                        # allow the callback functions to run
-                        rclpy.spin_once(self)
-
-                        # prints the correcting angle
-                        self.get_logger().info('correcting angle')
-                        # updates the angle_to_turn
-                        angle_to_turn = angle_to_goal - math.degrees(self.yaw)
-                        # prints the angle to turn
-                        self.get_logger().info('Turning: %f degrees' % (angle_to_turn))
+                    self.get_logger().info('correcting angle')
+                    if abs(angle_to_turn) < ROTATION_REDUCTION_ANGLE:
+                        ROTATE_CHANGE = 0.1
+                        self.rotatebot(angle_to_turn)
+                        ROTATE_CHANGE = 0.5
+                    else:
+                        ROTATE_CHANGE = 0.5
+                        self.rotatebot(angle_to_turn)
                 
-                        #if the angle to turn is > 0, the robot turns left else it turns right
-                        if (angle_to_turn > 0):
-                            twist.angular.z += ROTATE_CHANGE
-                        elif (angle_to_turn < 0):
-                            twist.angular.z -= ROTATE_CHANGE
-                        # publishes the twist object
-                        self.publisher_.publish(twist)
-                # stops the robot
-                twist.linear.x = 0.0  
-                twist.angular.z = 0.0
-                self.publisher_.publish(twist)
+                    rclpy.spin_once(self)
+                    inc_x = goal.x - self.x_coordinate
+                    inc_y = goal.y - self.y_coodinate
+                    distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)  
+                    angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
+                    angle_to_turn = angle_to_goal - math.degrees(self.yaw)              
                 # updates the last angle check distance
                 last_angle_check_distance = distance_traveled
             # while loop ends here
@@ -295,7 +335,7 @@ class Navigate(Node):
                 self.publisher_.publish(twist)
             # if both ir sensors dont detect a line, then the robot will move forward
             elif(self.ir_state == 'f'):
-                twist.linear.x += -0.02
+                twist.linear.x += -0.06
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
             # if both ir sensors detect a line and the count_stop = 0, then the robot will stop
@@ -309,20 +349,24 @@ class Navigate(Node):
             # if it is not, then the robot will restart the docking process
             # this is to prevent the robot from stopping when it approaches the line at 90 degrees
             elif(self.count_stop == 1):
-                twist.linear.x += -0.01
+                twist.linear.x += -0.06
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
                 self.get_logger().info('waiting for 2 seconds')
-                time.sleep(2) # sleep in seconds
+                time.sleep(1) # sleep in seconds
                 rclpy.spin_once(self)
-                if(self.ir_state == 'f'):
+                rclpy.spin_once(self)
+                print(self.ir_state)
+                if(self.ir_state == 'f' or self.ir_state == 'r' or self.ir_state == 'l'):
                     self.count_stop = 0
                     twist.linear.x = 0.0
                     twist.angular.z = 0.0
                     self.publisher_.publish(twist)
                     self.get_logger().info('Robot was at 90 degrees at line. Therefore restarted docking.')
+                    self.dock()
                 elif(self.ir_state == 's'):
                     self.count_stop += 1
+                    self.foundLine = False
 
         # resets foundLine and count_stop to initial values
         self.foundLine = False
@@ -348,12 +392,19 @@ class Navigate(Node):
             # extracts the y-coordinate of the point in the current_table's array
             y_cord = data['point' + str(point_number)]['y_cord']
             # extracts the orientation of the robot at the point in the currect_table's array
-            #orientation = data['point' + point_number]['orientation']  Not using as of now
+            orientation = data['point' + str(point_number)]['orientation'] # Not using as of now
 
             # calls the function to move the robot to the point
             self.moveToGoal(x_cord,y_cord)
             # prints to the terminal that the point has been reached
             self.get_logger().info('Reached point %d' %(point_number))
+        
+        # rotates to match saved orientation
+        angle_to_goal = orientation
+        # angle_to_turn stores the angle between the robots 0 degree and the coordinate
+        angle_to_turn = angle_to_goal - math.degrees(self.yaw)
+        self.rotatebot(angle_to_turn)
+
         #prints to the terminal that the table has been reached
         self.get_logger().info('Reached table %d' %(table_num))
 
@@ -363,7 +414,7 @@ class Navigate(Node):
             rclpy.spin_once(self)
         # prints to the terminal that the can has been picked
         self.get_logger().info('Can picked')
-        time.sleep(4) # wait for some time after can is picked
+        time.sleep(2) # wait for some time after can is picked
 
         # goes through each point in the array of current_table in reverse order
         for point_number in list(reversed(current_table))[1:]:
@@ -417,7 +468,6 @@ def main(args=None):
              # send message to esp32 to tell it that the robot has un-docked and is moving to the table
              client.publish("esp32/input", "0")
              navigation.moveToTable(table_num)
-             #navigation.dock()
              table_num = -1
              # send message back to esp32 to tell it that the robot has docked
              client.publish("esp32/input", "1")

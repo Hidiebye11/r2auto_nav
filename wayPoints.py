@@ -27,7 +27,7 @@ import time
 
 # constants
 ROTATE_CHANGE = 0.1
-SPEED_CHANGE = 0.01
+SPEED_CHANGE = 0.05
 
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -174,7 +174,7 @@ class Mover(Node):
         twist = Twist()
         # set twist such that it rotates in point
         twist.linear.x = 0.0
-        twist.angular.z += ROTATE_CHANGE
+        twist.angular.z += 0.3
         # keeps rotating until line is found
         while(self.foundLine == False):
               self.count_stop = 0 # reset count_stop
@@ -182,7 +182,7 @@ class Mover(Node):
               if(self.ir_state == 'r'):
                     self.get_logger().info('Found line')
                     self.foundLine = True
-                    twist.angular.z -= ROTATE_CHANGE
+                    twist.angular.z -= 0.3
                     self.publisher_.publish(twist)
                     time.sleep(1)
                     twist.angular.z = 0.0
@@ -230,14 +230,21 @@ class Mover(Node):
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
                 self.get_logger().info('waiting for 2 seconds')
-                time.sleep(2) # sleep in seconds
+                time.sleep(1) # sleep in seconds
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
                 rclpy.spin_once(self)
-                if(self.ir_state == 'f'):
+                rclpy.spin_once(self)
+                print(self.ir_state)
+                if(self.ir_state == 'f' or self.ir_state == 'l' or self.ir_state == 'r'):
                     self.count_stop = 0
+                    self.foundLine = False # reset foundLine
                     twist.linear.x = 0.0
                     twist.angular.z = 0.0
                     self.publisher_.publish(twist)
                     self.get_logger().info('Robot was at 90 degrees at line. Therefore restarted docking.')
+                    self.dock()
                 elif(self.ir_state == 's'):
                     self.count_stop += 1
                     self.foundLine = False # reset foundLine
