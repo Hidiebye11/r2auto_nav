@@ -10,26 +10,32 @@ import paho.mqtt.client as mqtt
 import socket
 from std_msgs.msg import String, Bool # I added this to subscribe to ir_state and switch_state
 import time
+from sensor_msgs.msg import LaserScan
+from rclpy.qos import qos_profile_sensor_data
 
 # constants
-ROTATE_CHANGE = 0.5
+ROTATE_CHANGE = 0.5 # remember to update everywhere
 SPEED_CHANGE = 0.15
-ANGLE_ERROR = 6.0 
-DIST_ERROR = 0.80 
+ANGLE_ERROR = 5.0 # was 6.0
+DIST_ERROR = 0.03 #was 0.12
 ANGLE_CHECK_DISTANCE = 0.2
-SPEED_REDUCTION_DISTANCE = 0.15
+SPEED_REDUCTION_DISTANCE = 0.25 # was0.15
 REDUCED_SPEED_CHANGE = 0.05
 ROTATION_REDUCTION_ANGLE = 20.0
-
+IDEAL_ANGLE = 25
 # defining the individual tables 'points' based on the wayPointsData.json file
 table1 = [1,2] 
 table2 = [1,2,3]
 table3 = [1,10,4]
 table4 = [1,10,5]
 table5 = [1,10,6,7]
-table6 = [1,2,8,9,11]
+table6 = [1,2,3,8,9,11]
 
 table_num = -1 # table number Note set to -1 so that it acts as a flag
+
+# defining the table range
+table_range =range(-IDEAL_ANGLE,IDEAL_ANGLE+1,1)
+distance_range = range(-10,10+1,1)
 
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -102,7 +108,19 @@ class Navigate(Node):
         # initialize variables
         self.switch_state = False # switch state: True = pressed, False = not pressed
 
-
+        # create subscription to get LIDAR data
+        self.scan_subscription = self.create_subscription(
+            LaserScan,
+            'scan',
+            self.scan_callback,
+            qos_profile_sensor_data)
+        self.scan_subscription # prevent unused variable warning
+        # initialize variables
+        self.laser_range = np.array([]) # array to store the LIDAR data
+        self.min_angle = 0 # angle to which we want to turn the robot
+        self.min_index = -1 # index of the minimum distance
+        self.min_distance = 0 # distance of the min_index
+        self.forward_dist = 0 # distance at 0 index
 
 
     # function to set the class variables using the /map2base information
@@ -130,6 +148,40 @@ class Navigate(Node):
         self.switch_state = msg.data
 
     
+    # function to set class variables using the LIDAR information
+    def scan_callback(self, msg):
+        # self.get_logger().info('In scan_callback')
+        # create numpy array of lidar ranges
+        self.laser_range = np.array(msg.ranges)
+        # replace 0's with nan's
+        self.laser_range[self.laser_range == 0] = np.nan
+
+        # find the minimum range in the table range
+        min_distance = 1000 # distance of the min_index
+        min_forward_distance = 1000
+
+        # the table range is the range of angles that we are interested in
+        for i in table_range:
+            distance = self.laser_range[i]
+            # if the distance is less than the current minimum distance
+            # then update the minimum distance and the index
+            if distance < min_distance:
+                min_distance = distance
+                self.min_index = i
+        
+        for i in distance_range:
+            forward_distance = self.laser_range[i]
+            if forward_distance < min_forward_distance:
+                min_forward_distance = forward_distance
+        # convert the index to an angle based on the turtlebot3
+        self.min_angle = math.degrees(self.min_index * msg.angle_increment)
+        self.min_distance = self.laser_range[self.min_index]
+        self.forward_dist = forward_distance
+        print(self.forward_dist)
+        # self.get_logger().info(self.min_index)
+        # self.get_logger().info(self.min_angle)
+        # self.get_logger().info(self.min_distance)
+
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
         # self.get_logger().info('In rotatebot')
@@ -261,7 +313,7 @@ class Navigate(Node):
             self.publisher_.publish(twist)
 
             # if statement to check if the robot has traveled ANGLE_CHECK_DISTANCE since the last angle check
-            if abs(distance_traveled - last_angle_check_distance) >= ANGLE_CHECK_DISTANCE:
+            if abs(distance_traveled - last_angle_check_distance) >= ANGLE_CHECK_DISTANCE and distance_to_goal >= DIST_ERROR:
                 # updates the angle to goal and angle to turn
                 rclpy.spin_once(self)
                 angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
@@ -377,6 +429,57 @@ class Navigate(Node):
         self.publisher_.publish(twist)
 
 
+    # function to find and move to the unknown table
+    def findUnknownTable(self):
+        global ROTATE_CHANGE
+        rclpy.spin_once(self)
+        rclpy.spin_once(self)
+        turn_angle = self.min_angle
+        unknown_table_found = False
+        twist = Twist()
+        print (turn_angle)
+
+        ROTATE_CHANGE = 0.1
+        self.rotatebot(turn_angle)
+        ROTATE_CHANGE = 0.5
+    
+        self.get_logger().info('Pointing to unknown table')
+
+        rclpy.spin_once(self)
+        self.get_logger().info('Distance: %f meters' % (self.forward_dist))
+        # moves the robot forward until it reaches the unknown table
+        # while self.forward_dist > 0.40 or np.isnan(self.forward_dist) ==True:
+        #     # clears the twist object to avoid adding values
+        #     twist.linear.x = 0.0
+        #     twist.angular.z = 0.0
+
+        #     # allow the callback functions to run
+        #     rclpy.spin_once(self)
+        #     # prints the distance to move
+        #     self.get_logger().info('Distance: %f meters' % (self.forward_dist))
+        #     # moves the robot forward
+        #     twist.linear.x += 0.05
+        #     # publishes the twist object
+        #     self.publisher_.publish(twist)
+
+        twist.linear.x += 0.05
+        twist.angular.z = 0.0
+        self.publisher_.publish(twist)
+
+        while unknown_table_found == False:
+            rclpy.spin_once(self)
+            lri = (self.laser_range[table_range]<float(0.40)).nonzero()
+            # self.get_logger().info('Distances: %s' % str(lri))
+
+            # if the list is not empty
+            if(len(lri[0])>0):
+                # stop moving
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
+                self.publisher_.publish(twist)
+                unknown_table_found = True
+
+
     # function to use waypoints to navigate to individual Tables
     def moveToTable(self, table_num):
         # loads the coordinate data from the wayPointsData.json file into the variable data, as a dictionary
@@ -404,6 +507,17 @@ class Navigate(Node):
         # angle_to_turn stores the angle between the robots 0 degree and the coordinate
         angle_to_turn = angle_to_goal - math.degrees(self.yaw)
         self.rotatebot(angle_to_turn)
+
+        # if statement to check if the table to go is 6, if yes
+        # then the robot will go to the unknown table
+        if (table_num == 6):
+            self.findUnknownTable()
+            #print("rotating 180 degrees")
+            #self.rotatebot(180)
+        
+        if (table_num == 6):
+            print("rotating 180 degrees")
+            self.rotatebot(179)
 
         #prints to the terminal that the table has been reached
         self.get_logger().info('Reached table %d' %(table_num))
@@ -468,6 +582,7 @@ def main(args=None):
              # send message to esp32 to tell it that the robot has un-docked and is moving to the table
              client.publish("esp32/input", "0")
              navigation.moveToTable(table_num)
+             #navigation.findUnknownTable()
              table_num = -1
              # send message back to esp32 to tell it that the robot has docked
              client.publish("esp32/input", "1")
