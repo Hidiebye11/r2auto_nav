@@ -17,11 +17,11 @@ from rclpy.qos import qos_profile_sensor_data
 ROTATE_CHANGE = 0.5 # remember to update everywhere
 SPEED_CHANGE = 0.15
 ANGLE_ERROR = 5.0 # was 6.0
-DIST_ERROR = 0.04 #was 0.12
-ANGLE_CHECK_DISTANCE = 0.2
+DIST_ERROR = 0.03 #was 0.12
+ANGLE_CHECK_DISTANCE = 0.2 #Remember to update everywhere
 SPEED_REDUCTION_DISTANCE = 0.25 # was0.15
 REDUCED_SPEED_CHANGE = 0.05
-ROTATION_REDUCTION_ANGLE = 20.0
+ROTATION_REDUCTION_ANGLE = 20.0 #qas 20 Remember to update everywhere
 IDEAL_ANGLE = 25
 # defining the individual tables 'points' based on the wayPointsData.json file
 table1 = [1,2] 
@@ -35,7 +35,11 @@ table_num = -1 # table number Note set to -1 so that it acts as a flag
 
 # defining the table range
 table_range =range(-IDEAL_ANGLE,IDEAL_ANGLE+1,1)
-# distance_range = range(-10,10+1,1)
+#distance_range = range(-10,10+1,1)
+
+# for adjusting for initial position
+initial_x = 0
+initial_y = 0
 
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -78,7 +82,7 @@ class Navigate(Node):
         self.map2base_subscription # prevent unused variable warning
         # initialize variables
         self.x_coordinate = 0 # x-coordinate of the bot in the map
-        self.y_coodinate = 0 # y-coordinate of the bot in the map
+        self.y_coordinate = 0 # y-coordinate of the bot in the map
         self.roll = 0 # roll of the bot in the map (not needed)
         self.pitch = 0 # pitch of the bot in the map (not needed)
         self.yaw = 0 # yaw of the bot in the map
@@ -131,7 +135,7 @@ class Navigate(Node):
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat_map.x, orientation_quat_map.y, orientation_quat_map.z, orientation_quat_map.w)
         position_map = msg.position
         self.x_coordinate = position_map.x
-        self.y_coodinate = position_map.y
+        self.y_coordinate = position_map.y
 
 
     # function to set class variables using the /ir_state information
@@ -158,7 +162,7 @@ class Navigate(Node):
 
         # find the minimum range in the table range
         min_distance = 1000 # distance of the min_index
-        min_forward_distance = 1000
+        #min_forward_distance = 1000
 
         # the table range is the range of angles that we are interested in
         for i in table_range:
@@ -176,8 +180,8 @@ class Navigate(Node):
         ## convert the index to an angle based on the turtlebot3
         self.min_angle = math.degrees(self.min_index * msg.angle_increment)
         self.min_distance = self.laser_range[self.min_index]
-        # self.forward_dist = forward_distance
-        # print(self.forward_dist)
+        #self.forward_dist = forward_distance
+        #print(self.forward_dist)
         # self.get_logger().info(self.min_index)
         # self.get_logger().info(self.min_angle)
         # self.get_logger().info(self.min_distance)
@@ -258,7 +262,7 @@ class Navigate(Node):
         # inc_x is the difference in the x-coordinate between goal and current
         inc_x = goal.x - self.x_coordinate
         # inc_y is the difference in y-coordinate between goal and current
-        inc_y = goal.y - self.y_coodinate
+        inc_y = goal.y - self.y_coordinate
         # distance_to_goal is the distance between the goal and the current position uses the pythagorean theorem
         distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)
 
@@ -278,7 +282,7 @@ class Navigate(Node):
 
             rclpy.spin_once(self)
             inc_x = goal.x - self.x_coordinate
-            inc_y = goal.y - self.y_coodinate
+            inc_y = goal.y - self.y_coordinate
             distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)  
             angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
             angle_to_turn = angle_to_goal - math.degrees(self.yaw)
@@ -300,7 +304,7 @@ class Navigate(Node):
 
             # updates the distance to goal
             inc_x = goal.x - self.x_coordinate
-            inc_y = goal.y - self.y_coodinate
+            inc_y = goal.y - self.y_coordinate
             distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)
             # prints the distance to goal
             self.get_logger().info('distance: %f' %(distance_to_goal))
@@ -310,7 +314,7 @@ class Navigate(Node):
             if distance_to_goal < SPEED_REDUCTION_DISTANCE:
                 ROTATION_REDUCTION_ANGLE = 50.0
                 ANGLE_CHECK_DISTANCE = 0.1
-
+                
                 twist.linear.x += REDUCED_SPEED_CHANGE
                 twist.angular.z = 0.0
             else:
@@ -343,7 +347,7 @@ class Navigate(Node):
                 
                     rclpy.spin_once(self)
                     inc_x = goal.x - self.x_coordinate
-                    inc_y = goal.y - self.y_coodinate
+                    inc_y = goal.y - self.y_coordinate
                     distance_to_goal = math.sqrt(inc_x**2 + inc_y**2)  
                     angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
                     angle_to_turn = angle_to_goal - math.degrees(self.yaw)              
@@ -480,7 +484,7 @@ class Navigate(Node):
 
         while unknown_table_found == False:
             rclpy.spin_once(self)
-            lri = (self.laser_range[table_range]<float(0.40)).nonzero()
+            lri = (self.laser_range[table_range]<float(0.30)).nonzero()
             # self.get_logger().info('Distances: %s' % str(lri))
 
             # if the list is not empty
@@ -494,6 +498,8 @@ class Navigate(Node):
 
     # function to use waypoints to navigate to individual Tables
     def moveToTable(self, table_num):
+        global initial_x
+        global initial_y
         # loads the coordinate data from the wayPointsData.json file into the variable data, as a dictionary
         with open('/home/vaibhav/colcon_ws/src/auto_nav/auto_nav/wayPointsData.json') as f:
             data = json.load(f) 
@@ -504,8 +510,10 @@ class Navigate(Node):
         for point_number in current_table:
             # extracts the x-coordinate of the point in the current_table's array
             x_cord = data['point' + str(point_number)]['x_cord']
+            x_cord = x_cord - initial_x # to adjust for initial position variance
             # extracts the y-coordinate of the point in the current_table's array
             y_cord = data['point' + str(point_number)]['y_cord']
+            y_cord = y_cord - initial_y # to adjust for initial position variance
             # extracts the orientation of the robot at the point in the currect_table's array
             orientation = data['point' + str(point_number)]['orientation'] # Not using as of now
 
@@ -518,6 +526,7 @@ class Navigate(Node):
         angle_to_goal = orientation
         # angle_to_turn stores the angle between the robots 0 degree and the coordinate
         angle_to_turn = angle_to_goal - math.degrees(self.yaw)
+        #self.rotatebot(1)
         self.rotatebot(angle_to_turn)
 
         # if statement to check if the table to go is 6, if yes
@@ -529,6 +538,7 @@ class Navigate(Node):
         time.sleep(1) # hopefully it helps with the sometimes not turning thing
         if (table_num == 6):
             print("rotating 180 degrees")
+            #self.rotatebot(1)
             self.rotatebot(179)
 
         #prints to the terminal that the table has been reached
@@ -536,8 +546,7 @@ class Navigate(Node):
 
         # wait for the can to be picked (switch_state to become false)
         rclpy.spin_once(self)
-        start_time = time.time()
-        while((self.switch_state == True) and ((time.time() - start_time) < 8)):
+        while(self.switch_state == True):
             rclpy.spin_once(self)
         # prints to the terminal that the can has been picked
         self.get_logger().info('Can picked')
@@ -547,8 +556,10 @@ class Navigate(Node):
         for point_number in list(reversed(current_table))[1:]:
             # extracts the x-coordinate of the point in the current_table's array
             x_cord = data['point' + str(point_number)]['x_cord']
+            x_cord = x_cord - initial_x # to adjust for initial position variance
             # extracts the y-coordinate of the point in the current_table's array
             y_cord = data['point' + str(point_number)]['y_cord']
+            y_cord = y_cord - initial_y # to adjust for initial position variance
             # extracts the orientation of the robot at the point in the currect_table's array
             #orientation = data['point' + point_number]['orientation']  Not using as of now
 
@@ -563,7 +574,7 @@ class Navigate(Node):
         angle_to_turn = angle_to_goal - math.degrees(self.yaw)
         #self.rotatebot(1)
         self.rotatebot(angle_to_turn)
-        
+
         # prints to the terminal that robot has reached the docking point
         self.get_logger().info('Reached docking point')
 
@@ -584,6 +595,8 @@ def on_table_num(client, userdata, msg):
 # main function
 def main(args=None):
      global table_num
+     global initial_x
+     global initial_y
      rclpy.init(args=args)
      # to get ip address of the laptop
      my_ip = socket.gethostbyname(socket.gethostname())
@@ -597,6 +610,13 @@ def main(args=None):
 
      # to start the navigation based on the table number esp32 sends. The code runs forever.
      navigation = Navigate()
+
+     # to adust for the robot's initial position we do the following
+     rclpy.spin_once(navigation)
+     rclpy.spin_once(navigation)
+     initial_x = navigation.x_coordinate
+     initial_y = navigation.y_coordinate
+
      while True:
          #print (table_num)
          if(table_num != -1):
