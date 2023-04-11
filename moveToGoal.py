@@ -405,7 +405,7 @@ class Navigate(Node):
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
                 self.get_logger().info('waiting for 2 seconds')
-                time.sleep(1) # sleep in seconds
+                time.sleep(0.75) # sleep in seconds
                 rclpy.spin_once(self)
                 rclpy.spin_once(self)
                 print(self.ir_state)
