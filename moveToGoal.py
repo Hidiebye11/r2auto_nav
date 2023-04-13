@@ -1,28 +1,28 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Point
-from geometry_msgs.msg import Pose # I added this to subscribe to map2base
+from geometry_msgs.msg import Pose 
 import math
 import cmath
 import numpy as np
-import json # I added this to retrieve the coordinates from a file
+import json 
 import paho.mqtt.client as mqtt
 import socket
-from std_msgs.msg import String, Bool # I added this to subscribe to ir_state and switch_state
+from std_msgs.msg import String, Bool 
 import time
 from sensor_msgs.msg import LaserScan
 from rclpy.qos import qos_profile_sensor_data
 
 # constants
-ROTATE_CHANGE = 0.5 # remember to update everywhere
-SPEED_CHANGE = 0.15
-ANGLE_ERROR = 5.0 # was 6.0
-DIST_ERROR = 0.04 #was 0.12
-ANGLE_CHECK_DISTANCE = 0.2
-SPEED_REDUCTION_DISTANCE = 0.25 # was0.15
-REDUCED_SPEED_CHANGE = 0.05
-ROTATION_REDUCTION_ANGLE = 20.0
-IDEAL_ANGLE = 25
+ROTATE_CHANGE = 0.5 # Defines the Rotation speed. Is changed and then reset for some cases
+SPEED_CHANGE = 0.15 # Defines the Speed.
+ANGLE_ERROR = 5.0 # Defines the acceptable error in angle while rotating
+DIST_ERROR = 0.04 # Defines the acceptable error in distance while moving to a point
+ANGLE_CHECK_DISTANCE = 0.2 # Defines the distance after which the angle is checked to see if the robot deviated from its path. Is changes and then rest for some cases
+SPEED_REDUCTION_DISTANCE = 0.25 # Defines the distance after which the speed is reduced to avoid overshooting
+REDUCED_SPEED_CHANGE = 0.05 # Defines the reduced speed
+ROTATION_REDUCTION_ANGLE = 20.0 # Defines the angle after which the rotation speed is reduced to avoid overshooting. Is changed and then reset for some cases
+IDEAL_ANGLE = 25 # Defines the angle from 0 to which the unknown table is searched for
 # defining the individual tables 'points' based on the wayPointsData.json file
 table1 = [1,2] 
 table2 = [1,2,3]
@@ -30,13 +30,10 @@ table3 = [1,10,4]
 table4 = [1,10,5]
 table5 = [1,10,6,7]
 table6 = [1,2,3,8,9,11]
-
-table_num = -1 # table number Note set to -1 so that it acts as a flag
-
-# defining the table range
+# initializing table_num to -1
+table_num = -1 # table number. Note set to -1 so that it acts as a flag
+# defining the table range for searching for the unknown table
 table_range =range(-IDEAL_ANGLE,IDEAL_ANGLE+1,1)
-# distance_range = range(-10,10+1,1)
-
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -158,7 +155,6 @@ class Navigate(Node):
 
         # find the minimum range in the table range
         min_distance = 1000 # distance of the min_index
-        min_forward_distance = 1000
 
         # the table range is the range of angles that we are interested in
         for i in table_range:
@@ -168,19 +164,10 @@ class Navigate(Node):
             if distance < min_distance:
                 min_distance = distance
                 self.min_index = i
-        
-        # for i in distance_range:
-        #     forward_distance = self.laser_range[i]
-        #     if forward_distance < min_forward_distance:
-        #         min_forward_distance = forward_distance
         ## convert the index to an angle based on the turtlebot3
         self.min_angle = math.degrees(self.min_index * msg.angle_increment)
         self.min_distance = self.laser_range[self.min_index]
-        # self.forward_dist = forward_distance
-        # print(self.forward_dist)
-        # self.get_logger().info(self.min_index)
-        # self.get_logger().info(self.min_angle)
-        # self.get_logger().info(self.min_distance)
+
 
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle):
@@ -267,15 +254,18 @@ class Navigate(Node):
         # angle_to_turn stores the angle between the robots 0 degree and the coordinate
         angle_to_turn = angle_to_goal - math.degrees(self.yaw)
 
+        temp_rotate_change = ROTATE_CHANGE # temporarily store the ROTATE_CHANGE value as we want to update it.
+        # while loop to rotate the bot to face the point
         while abs(angle_to_turn) > ANGLE_ERROR:
+            # if the angle to turn is less than ROTATION_REDUCTION_ANGLE, the speed of rotating is reduced in order to prevent overshooting
             if abs(angle_to_turn) < ROTATION_REDUCTION_ANGLE:
                 ROTATE_CHANGE = 0.1
                 self.rotatebot(angle_to_turn)
-                ROTATE_CHANGE = 0.5
+                ROTATE_CHANGE = temp_rotate_change
             else:
-                ROTATE_CHANGE = 0.5
+                ROTATE_CHANGE = temp_rotate_change
                 self.rotatebot(angle_to_turn)
-
+            # update the x and y and then recalculate the angle to turn
             rclpy.spin_once(self)
             inc_x = goal.x - self.x_coordinate
             inc_y = goal.y - self.y_coodinate
@@ -290,6 +280,9 @@ class Navigate(Node):
 
         checked = False # boolean to check if the angle has been checked
 
+        temp_angle_check_distance = ANGLE_CHECK_DISTANCE # temporarily store the ANGLE_CHECK_DISTANCE value as we want to update it
+        temp_rotation_reduction_angle = ROTATION_REDUCTION_ANGLE # temporarily store the ROTATION_REDUCTION_ANGLE value as we want to update it
+ 
         # while loop to move the robot straight until it reaches the goal
         while(distance_to_goal > DIST_ERROR):
             # cleares the twist object to avoid adding values
@@ -307,6 +300,7 @@ class Navigate(Node):
             # updates the distance traveled
             distance_traveled = abs(distance_left - distance_to_goal)
             # moves the robot straight
+            # if the distance to goal is less than the SPEED_REDUCTION_DISTANCE, the speed of the bot is reduced in order to prevent overshooting
             if distance_to_goal < SPEED_REDUCTION_DISTANCE:
                 ROTATION_REDUCTION_ANGLE = 50.0
                 ANGLE_CHECK_DISTANCE = 0.1
@@ -314,8 +308,8 @@ class Navigate(Node):
                 twist.linear.x += REDUCED_SPEED_CHANGE
                 twist.angular.z = 0.0
             else:
-                ROTATION_REDUCTION_ANGLE = 20.0
-                ANGLE_CHECK_DISTANCE = 0.2
+                ROTATION_REDUCTION_ANGLE = temp_rotation_reduction_angle
+                ANGLE_CHECK_DISTANCE = temp_angle_check_distance
                 twist.linear.x += SPEED_CHANGE
                 twist.angular.z = 0.0
             # publish the twist msg
@@ -328,7 +322,9 @@ class Navigate(Node):
                 angle_to_goal = math.degrees(math.atan2(inc_y, inc_x))
                 angle_to_turn = angle_to_goal - math.degrees(self.yaw)
 
+                # to correct the angle if the robot deviated from its path
                 while abs(angle_to_turn) > ANGLE_ERROR:
+                    # to ensure that the robot at least checks once if the distance to goal is less that SPEED_REDUCTION_DISTANCE
                     if distance_to_goal < SPEED_REDUCTION_DISTANCE:
                         checked = True
 
@@ -336,11 +332,11 @@ class Navigate(Node):
                     if abs(angle_to_turn) < ROTATION_REDUCTION_ANGLE:
                         ROTATE_CHANGE = 0.1
                         self.rotatebot(angle_to_turn)
-                        ROTATE_CHANGE = 0.5
+                        ROTATE_CHANGE = temp_rotate_change
                     else:
-                        ROTATE_CHANGE = 0.5
+                        ROTATE_CHANGE = temp_rotate_change
                         self.rotatebot(angle_to_turn)
-                
+                    # updates the angle to turn
                     rclpy.spin_once(self)
                     inc_x = goal.x - self.x_coordinate
                     inc_y = goal.y - self.y_coodinate
@@ -443,52 +439,48 @@ class Navigate(Node):
 
     # function to find and move to the unknown table
     def findUnknownTable(self):
-        global ROTATE_CHANGE
+        global ROTATE_CHANGE # access the global variable
+        # allow the callback functions to run to update the laser scan data
         rclpy.spin_once(self)
         rclpy.spin_once(self)
+        # turn angle is the angle we need to turn to
         turn_angle = self.min_angle
+        # boolean variable to store if we found the unknown table
         unknown_table_found = False
+        # create Twist object
         twist = Twist()
+        # print the angle to the unknown table
         print (turn_angle)
-
+        temp_rotate_change = ROTATE_CHANGE # temporily store the ROTATE_CHANGE value as we want to update it
         ROTATE_CHANGE = 0.1
+        # rotate the robot to the angle of the unknown table
         self.rotatebot(turn_angle)
-        ROTATE_CHANGE = 0.5
-    
+        ROTATE_CHANGE = temp_rotate_change
+        # print that we are facing the unknown table
         self.get_logger().info('Pointing to unknown table')
-
+        # allow the callback functions to run to update the laser scan data
         rclpy.spin_once(self)
+        # print the distance to the table
         self.get_logger().info('Distance: %f meters' % (self.forward_dist))
         # moves the robot forward until it reaches the unknown table
-        # while self.forward_dist > 0.40 or np.isnan(self.forward_dist) ==True:
-        #     # clears the twist object to avoid adding values
-        #     twist.linear.x = 0.0
-        #     twist.angular.z = 0.0
-
-        #     # allow the callback functions to run
-        #     rclpy.spin_once(self)
-        #     # prints the distance to move
-        #     self.get_logger().info('Distance: %f meters' % (self.forward_dist))
-        #     # moves the robot forward
-        #     twist.linear.x += 0.05
-        #     # publishes the twist object
-        #     self.publisher_.publish(twist)
-
         twist.linear.x += 0.05
         twist.angular.z = 0.0
+        # publish the twist message
         self.publisher_.publish(twist)
 
+        # while the robot is not at the unknown table
         while unknown_table_found == False:
             rclpy.spin_once(self)
+            # stores the values of any degree at which the distance is less than 0.40m
             lri = (self.laser_range[table_range]<float(0.40)).nonzero()
-            # self.get_logger().info('Distances: %s' % str(lri))
 
-            # if the list is not empty
+            # if the list is not empty then the robot is at the unknown table
             if(len(lri[0])>0):
                 # stop moving
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
                 self.publisher_.publish(twist)
+                # stop the while loop
                 unknown_table_found = True
 
 
@@ -527,6 +519,8 @@ class Navigate(Node):
             #print("rotating 180 degrees")
             #self.rotatebot(180)
         time.sleep(1) # hopefully it helps with the sometimes not turning thing
+        # if statement to check if the table to go is 6, if yes
+        # then the robot will rotate 180 degrees
         if (table_num == 6):
             print("rotating 180 degrees")
             self.rotatebot(179)
@@ -557,7 +551,7 @@ class Navigate(Node):
             # prints to the terminal that the point has been reached
             self.get_logger().info('Reached point %d' %(point_number))
         
-        # rotates to match saved orientation in this case it is always coordinate of 1
+        # rotates to match saved orientation in this case it is always coordinate of point 1
         angle_to_goal = orientation
         # angle_to_turn stores the angle between the robots 0 degree and the coordinate
         angle_to_turn = angle_to_goal - math.degrees(self.yaw)
